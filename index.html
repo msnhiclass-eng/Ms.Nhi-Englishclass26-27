@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quản Lý Học Tập Tiếng Anh 2026-2027 - THPT Nguyễn Sinh Sắc</title>
+    <!-- Tải Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tải Vue.js -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- Tải icon FontAwesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Tải thư viện Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- Tải thư viện PeerJS (Kết nối P2P điện thoại - máy tính) -->
+    <script src="https://unpkg.com/peerjs@1.5.1/dist/peerjs.min.js"></script>
+    <!-- Tải thư viện tạo mã QR -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body class="bg-slate-50 text-gray-800 font-sans min-h-screen relative overflow-x-hidden">
+    <div id="app" class="max-w-7xl mx-auto p-4 md:pt-6">
+        
+        <!-- ========================================== -->
+        <!-- 1. GIAO DIỆN DÀNH CHO HỌC SINH (TRÊN ĐIỆN THOẠI) -->
+        <!-- ========================================== -->
+        <div v-if="isStudentDevice" class="min-h-screen flex flex-col items-center justify-center bg-indigo-600 p-4 animate-fade-in absolute inset-0 z-50">
+            <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden text-center p-6 md:p-8">
+                <i class="fas fa-graduation-cap text-5xl text-indigo-600 mb-3"></i>
+                <h2 class="text-xl font-black text-gray-800 uppercase tracking-wide">THPT NGUYỄN SINH SẮC</h2>
+                <p class="text-xs font-bold text-indigo-600 mb-4 pb-2 border-b">BỘ MÔN TIẾNG ANH - CÔ NHI</p>
+                
+                <!-- Trạng thái 1: Đang kết nối tới máy giáo viên -->
+                <div v-if="studentState.status === 'connecting'" class="py-10">
+                    <i class="fas fa-spinner fa-spin text-5xl text-indigo-500 mb-4"></i>
+                    <p class="font-bold text-gray-600 text-base">Đang kết nối vào phòng học của cô...</p>
+                </div>
+
+                <!-- Trạng thái 2: Đã kết nối, học sinh chọn tên và nhập bài làm -->
+                <div v-if="studentState.status === 'ready'">
+                    <div class="bg-indigo-50 p-3 rounded-xl mb-4 text-left border border-indigo-100">
+                        <span class="text-xs font-bold text-indigo-800 uppercase block mb-1">Câu hỏi:</span>
+                        <p class="text-gray-800 font-semibold text-base whitespace-pre-line">{{ studentState.question }}</p>
+                    </div>
+
+                    <div class="text-left mb-3">
+                        <label class="block font-bold text-sm text-gray-700 mb-1">1. Chọn tên của em (Lớp {{ studentState.className }}):</label>
+                        <select v-model="studentState.selectedStudent" class="w-full border-2 border-indigo-200 rounded-xl p-3 bg-white focus:border-indigo-500 focus:outline-none font-bold text-gray-800 text-sm">
+                            <option value="">-- Nhấn để chọn tên em --</option>
+                            <option v-for="(name, idx) in studentState.studentList" :key="idx" :value="name">{{ idx + 1 }}. {{ name }}</option>
+                        </select>
+                    </div>
+
+                    <div class="text-left mb-5">
+                        <label class="block font-bold text-sm text-gray-700 mb-1">2. Câu trả lời của em:</label>
+                        <input type="text" v-model="studentState.answer" @keyup.enter="sendAnswerFromPhone" placeholder="Gõ câu trả lời..." class="w-full border-2 border-indigo-200 rounded-xl p-3 bg-white focus:border-indigo-500 focus:outline-none text-base font-bold text-gray-800">
+                    </div>
+
+                    <button @click="sendAnswerFromPhone" :disabled="!studentState.selectedStudent || !studentState.answer.trim()" class="w-full bg-green-500 hover:bg-green-600 disabled:opacity-40 text-white font-black text-lg py-4 rounded-xl shadow-lg transition transform hover:scale-105 active:scale-95">
+                        <i class="fas fa-paper-plane mr-2"></i> GỬI BÀI NGAY
+                    </button>
+                </div>
+
+                <!-- Trạng thái 3: Đang gửi bài -->
+                <div v-if="studentState.status === 'submitting'" class="py-10">
+                    <i class="fas fa-paper-plane fa-bounce text-5xl text-indigo-500 mb-4"></i>
+                    <p class="font-bold text-gray-700 text-lg">Đang chuyển bài nộp về máy cô Nhi...</p>
+                </div>
+
+                <!-- Trạng thái 4: Kết quả Đúng -->
+                <div v-if="studentState.status === 'correct'" class="py-8 animate-fade-in">
+                    <i class="fas fa-check-circle text-6xl text-emerald-500 mb-3"></i>
+                    <h3 class="text-2xl font-black text-emerald-600 mb-1">CHÍNH XÁC!</h3>
+                    <p class="text-gray-700 font-bold mb-2">Xin chúc mừng {{ studentState.selectedStudent }}!</p>
+                    <p class="bg-emerald-100 text-emerald-800 py-2 px-4 rounded-full font-black text-sm inline-block mb-3">+1 Điểm Cộng Đã Được Ghi Nhận</p>
+                    <p class="text-xs text-gray-500">Em hãy nhìn lên màn hình máy chiếu để theo dõi bảng tổng kết lớp.</p>
+                </div>
+
+                <!-- Trạng thái 5: Kết quả Sai -->
+                <div v-if="studentState.status === 'wrong'" class="py-8 animate-fade-in">
+                    <i class="fas fa-times-circle text-6xl text-rose-500 mb-3"></i>
+                    <h3 class="text-2xl font-black text-rose-600 mb-1">CHƯA CHÍNH XÁC!</h3>
+                    <p class="text-gray-700 font-bold mb-2">Rất tiếc em {{ studentState.selectedStudent }}!</p>
+                    <p class="bg-rose-100 text-rose-800 py-2 px-4 rounded-full font-black text-sm inline-block mb-3">-1 Điểm Trừ Đã Được Ghi Nhận</p>
+                    <p class="text-sm font-semibold text-gray-700 mt-2">Đáp án đúng là: <span class="text-emerald-600 font-bold underline">{{ studentState.correctAnswer }}</span></p>
+                </div>
+
+                <!-- Trạng thái 6: Đã nộp rồi (Chống nộp trùng) -->
+                <div v-if="studentState.status === 'already_submitted'" class="py-8 animate-fade-in">
+                    <i class="fas fa-exclamation-triangle text-6xl text-amber-500 mb-3"></i>
+                    <h3 class="text-xl font-black text-amber-600 mb-2">EM ĐÃ NỘP BÀI RỒI!</h3>
+                    <p class="text-gray-600 text-sm mb-4">Học sinh <strong>{{ studentState.selectedStudent }}</strong> đã hoàn thành bài tập này. Mỗi em chỉ nộp 1 lần duy nhất.</p>
+                    <button @click="studentState.status = 'ready'" class="text-indigo-600 underline font-bold text-sm">Chọn lại tên khác nếu chọn nhầm</button>
+                </div>
+
+                <!-- Trạng thái 7: Lỗi kết nối -->
+                <div v-if="studentState.status === 'error'" class="py-8 animate-fade-in">
+                    <i class="fas fa-unlink text-6xl text-rose-500 mb-3"></i>
+                    <h3 class="text-xl font-bold text-rose-600 mb-2">Mất kết nối với máy cô!</h3>
+                    <p class="text-gray-600 text-sm mb-4">Phòng học có thể đã đóng hoặc đường truyền bị gián đoạn.</p>
+                    <button @click="connectToTeacherRoom" class="bg-indigo-600 text-white font-bold py-2 px-6 rounded-full text-sm">Thử kết nối lại</button>
+                </div>
+            </div>
+            <p class="text-indigo-200 mt-4 text-xs font-medium">Hệ thống nộp bài trực tuyến qua điện thoại</p>
+        </div>
+
+        <!-- ========================================== -->
+        <!-- 2. GIAO DIỆN DÀNH CHO GIÁO VIÊN (TRÊN MÁY TÍNH) -->
+        <!-- ========================================== -->
+        <div v-else>
+            <!-- Header -->
+            <div class="bg-white rounded-xl shadow-sm p-6 mb-6 text-center border-t-4 border-blue-600 relative">
+                <h1 class="text-3xl font-bold text-blue-800 mb-3 uppercase tracking-wide">
+                    <i class="fas fa-graduation-cap mr-2"></i>Ứng Dụng Quản Lý Học Tập Tiếng Anh Năm Học 2026-2027
+                </h1>
+                <div class="inline-block bg-blue-50 py-2 px-6 rounded-full border border-blue-100">
+                    <p class="text-lg font-bold text-blue-900">Giáo viên: NGUYỄN THỊ HUỲNH NHI</p>
+                    <p class="text-sm font-semibold text-blue-700">Tổ Tiếng Anh - Trường THPT Nguyễn Sinh Sắc - Tân Châu - An Giang</p>
+                </div>
+            </div>
+
+            <!-- Cảnh báo nếu đang chạy dạng file:/// -->
+            <div v-if="isLocalFile" class="bg-rose-100 border-l-4 border-rose-500 text-rose-800 p-4 mb-6 rounded shadow-sm">
+                <p class="font-bold"><i class="fas fa-exclamation-circle mr-2"></i>Lưu ý kết nối điện thoại học sinh:</p>
+                <p class="text-sm mt-1">Cô đang mở file trực tiếp từ ổ cứng máy tính (đường dẫn <code>file:///</code>). Để học sinh dùng điện thoại quét mã QR và nộp bài được, ứng dụng cần được đưa lên đường link Web online (xem hướng dẫn nhanh ở cuối trang).</p>
+            </div>
+
+            <!-- Navigation Tabs -->
+            <div class="flex flex-wrap md:flex-nowrap space-y-2 md:space-y-0 md:space-x-2 mb-6">
+                <button @click="activeTab = 'entry'" :class="tabClass('entry')" class="w-full">
+                    <i class="fas fa-edit mr-2"></i>Chấm Điểm Thủ Công
+                </button>
+                <!-- TAB BÀI TẬP ĐIỆN THOẠI CẢ LỚP -->
+                <button @click="activeTab = 'liveQuiz'" :class="tabClass('liveQuiz')" class="w-full text-purple-700">
+                    <i class="fas fa-qrcode mr-2"></i>Nộp Bài Điện Thoại (Cả Lớp)
+                </button>
+                <button @click="activeTab = 'summary'" :class="tabClass('summary')" class="w-full">
+                    <i class="fas fa-chart-bar mr-2"></i>Tổng Kết Học Tập
+                </button>
+                <button @click="activeTab = 'students'" :class="tabClass('students')" class="w-full">
+                    <i class="fas fa-users mr-2"></i>Quản Lý Danh Sách
+                </button>
+            </div>
+
+            <!-- TAB 1: NHẬP LIỆU THỦ CÔNG -->
+            <div v-show="activeTab === 'entry'" class="bg-white rounded-xl shadow-sm p-6 animate-fade-in">
+                <div class="flex items-center justify-between border-b pb-3 mb-5">
+                    <h2 class="text-2xl font-bold text-gray-800"><i class="fas fa-clipboard-check text-blue-600 mr-2"></i>Nhập Đánh Giá Tiết Học</h2>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-5 bg-gray-50 p-4 rounded-lg border">
+                    <div class="col-span-1">
+                        <label class="block font-bold mb-1 text-gray-700">1. Chọn Lớp</label>
+                        <select v-model="form.class" class="w-full border-2 border-gray-300 rounded-lg p-2 bg-white focus:border-blue-500 focus:outline-none">
+                            <option value="">-- Chọn Lớp --</option>
+                            <option v-for="cls in classList" :value="cls">{{ cls }}</option>
+                        </select>
+                    </div>
+                    <div class="col-span-1 relative">
+                        <label class="block font-bold mb-1 text-gray-700">2. Chọn Học Sinh</label>
+                        <select v-model="form.student" class="w-full border-2 border-gray-300 rounded-lg p-2 bg-white focus:border-blue-500 focus:outline-none" :disabled="!form.class">
+                            <option value="">-- Chọn Học Sinh --</option>
+                            <option v-for="(name, index) in students[form.class]" :value="name">{{ index + 1 }}. {{ name }}</option>
+                        </select>
+                    </div>
+                    <div class="col-span-1">
+                        <label class="block font-bold mb-1 text-gray-700">3. Ngày học</label>
+                        <input type="date" v-model="form.date" class="w-full border-2 border-gray-300 rounded-lg p-2 bg-white focus:border-blue-500 focus:outline-none cursor-pointer">
+                    </div>
+                    <div class="col-span-1">
+                        <label class="block font-bold mb-1 text-gray-700">4. Tuần học (1-35)</label>
+                        <select v-model="form.week" class="w-full border-2 border-gray-300 rounded-lg p-2 bg-white focus:border-blue-500 focus:outline-none">
+                            <option v-for="w in 35" :key="w" :value="'Tuần ' + w">Tuần {{ w }}</option>
+                        </select>
+                    </div>
+                    <div class="col-span-1">
+                        <label class="block font-bold mb-1 text-gray-700">5. Học Kỳ</label>
+                        <select v-model="form.semester" class="w-full border-2 border-gray-300 rounded-lg p-2 bg-gray-100 text-gray-600 focus:outline-none pointer-events-none">
+                            <option value="Học kỳ 1">Học kỳ 1</option>
+                            <option value="Học kỳ 2">Học kỳ 2</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div v-if="form.student && todayRecordsCount > 0" class="mb-6 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-3 rounded flex items-center shadow-sm animate-fade-in">
+                    <i class="fas fa-exclamation-triangle mr-3 text-lg"></i>
+                    <div><span class="font-bold">Lưu ý:</span> Học sinh <strong>{{ form.student }}</strong> đã có <strong>{{ todayRecordsCount }}</strong> lượt đánh giá trong ngày hôm nay.</div>
+                </div>
+                <div v-else-if="form.student" class="mb-6 bg-green-50 border-l-4 border-green-500 text-green-700 p-3 rounded flex items-center shadow-sm animate-fade-in">
+                    <i class="fas fa-info-circle mr-3 text-lg"></i>
+                    <div>Học sinh <strong>{{ form.student }}</strong> chưa có đánh giá nào trong ngày hôm nay.</div>
+                </div>
+                <div v-else class="mb-6 h-12"></div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div class="col-span-1 bg-emerald-50 p-5 rounded-xl border-2 border-emerald-300 shadow-sm">
+                        <h3 class="font-bold text-emerald-800 text-lg mb-4 flex items-center border-b border-emerald-200 pb-2"><i class="fas fa-check-circle text-2xl mr-2"></i> ĐIỂM CỘNG</h3>
+                        <div class="space-y-3">
+                            <label class="flex items-center space-x-3 bg-white p-3 rounded-lg shadow-sm cursor-pointer hover:bg-emerald-100 transition border border-emerald-100"><input type="checkbox" v-model="form.criteriaPlus.phatBieu" class="w-6 h-6 text-emerald-600 accent-emerald-600 rounded"><span class="font-semibold text-gray-800">Tham gia phát biểu đúng</span></label>
+                            <label class="flex items-center space-x-3 bg-white p-3 rounded-lg shadow-sm cursor-pointer hover:bg-emerald-100 transition border border-emerald-100"><input type="checkbox" v-model="form.criteriaPlus.lamBaiTap" class="w-6 h-6 text-emerald-600 accent-emerald-600 rounded"><span class="font-semibold text-gray-800">Làm bài tập đầy đủ</span></label>
+                            <label class="flex items-center space-x-3 bg-white p-3 rounded-lg shadow-sm cursor-pointer hover:bg-emerald-100 transition border border-emerald-100"><input type="checkbox" v-model="form.criteriaPlus.nhanXetDung" class="w-6 h-6 text-emerald-600 accent-emerald-600 rounded"><span class="font-semibold text-gray-800">Chú ý nhận xét đúng bài của bạn</span></label>
+                            <label class="flex items-center space-x-3 bg-white p-3 rounded-lg shadow-sm cursor-pointer hover:bg-emerald-100 transition border border-emerald-100"><input type="checkbox" v-model="form.criteriaPlus.traLoiDung" class="w-6 h-6 text-emerald-600 accent-emerald-600 rounded"><span class="font-semibold text-gray-800">Trả lời đúng câu hỏi của giáo viên</span></label>
+                        </div>
+                    </div>
+                    <div class="col-span-1 bg-rose-50 p-5 rounded-xl border-2 border-rose-300 shadow-sm">
+                        <h3 class="font-bold text-rose-800 text-lg mb-4 flex items-center border-b border-rose-200 pb-2"><i class="fas fa-times-circle text-2xl mr-2"></i> ĐIỂM TRỪ</h3>
+                        <div class="space-y-3">
+                            <label class="flex items-center space-x-3 bg-white p-3 rounded-lg shadow-sm cursor-pointer hover:bg-rose-100 transition border border-rose-100"><input type="checkbox" v-model="form.criteriaMinus.khongLamBai" class="w-6 h-6 text-rose-600 accent-rose-600 rounded"><span class="font-semibold text-gray-800">Không làm bài tập</span></label>
+                            <label class="flex items-center space-x-3 bg-white p-3 rounded-lg shadow-sm cursor-pointer hover:bg-rose-100 transition border border-rose-100"><input type="checkbox" v-model="form.criteriaMinus.khongChuY" class="w-6 h-6 text-rose-600 accent-rose-600 rounded"><span class="font-semibold text-gray-800">Không chú ý theo dõi sửa bài / làm bài</span></label>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-6">
+                    <label class="block font-bold mb-2 text-gray-700"><i class="fas fa-comment-dots mr-2"></i>Nhận xét tổng kết thêm (Tùy chọn)</label>
+                    <textarea v-model="form.comment" rows="2" placeholder="Nhập nhận xét chi tiết về tình hình học tập của em này hôm nay..." class="w-full border-2 border-gray-300 rounded-lg p-3 bg-white focus:border-blue-500 focus:outline-none"></textarea>
+                </div>
+                <button @click="saveRecord" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg py-4 px-4 rounded-xl shadow-lg transition transform hover:-translate-y-1"><i class="fas fa-save mr-2"></i> LƯU ĐÁNH GIÁ HỌC TẬP</button>
+            </div>
+
+            <!-- TAB 2: NỘP BÀI ĐỒNG THỜI CHO NHIỀU HỌC SINH (LIVE QUIZ) -->
+            <div v-show="activeTab === 'liveQuiz'" class="bg-white rounded-xl shadow-sm p-6 animate-fade-in border-t-4 border-purple-500">
+                <div class="flex items-center justify-between border-b pb-3 mb-5">
+                    <h2 class="text-2xl font-bold text-purple-800"><i class="fas fa-network-wired mr-2"></i>Tổ Chức Bài Tập Trực Tuyến (Cả Lớp Nộp Cùng Lúc)</h2>
+                </div>
+
+                <!-- CHƯA MỞ PHÒNG: FORM CÀI ĐẶT -->
+                <div v-if="!liveSession.isOpen">
+                    <div class="bg-purple-50 p-4 rounded-lg border border-purple-200 mb-6 text-purple-900">
+                        <p class="font-bold mb-1"><i class="fas fa-info-circle mr-1"></i> Hướng dẫn:</p>
+                        <p class="text-sm">Cô chọn Lớp, nhập Câu hỏi và Đáp án đúng rồi bấm nút mở phòng. Sau đó chiếu màn hình lên bảng/máy chiếu để <strong>toàn bộ học sinh cùng quét 1 mã QR</strong> và gửi bài trực tiếp từ điện thoại.</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                        <div class="bg-gray-50 p-5 rounded-xl border">
+                            <label class="block font-bold mb-2 text-gray-700">1. Chọn lớp kiểm tra:</label>
+                            <select v-model="liveSession.class" class="w-full border-2 border-gray-300 rounded-lg p-3 bg-white focus:border-purple-500 focus:outline-none text-base font-bold mb-4">
+                                <option value="">-- Chọn Lớp --</option>
+                                <option v-for="cls in classList" :value="cls">{{ cls }} ({{ students[cls].length }} HS)</option>
+                            </select>
+
+                            <div v-if="liveSession.class && students[liveSession.class].length === 0" class="text-rose-600 text-sm font-semibold mb-2">
+                                <i class="fas fa-exclamation-triangle"></i> Lớp này chưa có danh sách học sinh. Cô hãy nạp danh sách ở Tab "Quản Lý Danh Sách" trước nhé.
+                            </div>
+
+                            <label class="block font-bold mb-2 text-gray-700">2. Đáp án đúng chuẩn xác (Hệ thống tự so khớp):</label>
+                            <input type="text" v-model="liveSession.correctAnswer" placeholder="Nhập đáp án chuẩn..." class="w-full border-2 border-gray-300 rounded-lg p-3 bg-white focus:border-purple-500 focus:outline-none font-bold text-emerald-700 text-lg">
+                        </div>
+
+                        <div class="bg-gray-50 p-5 rounded-xl border">
+                            <label class="block font-bold mb-2 text-gray-700">3. Nội dung Câu hỏi / Bài tập (Hiển thị cho học sinh):</label>
+                            <textarea v-model="liveSession.question" rows="5" placeholder="Nhập câu hỏi hoặc bài tập tiếng Anh tại đây..." class="w-full border-2 border-gray-300 rounded-lg p-3 bg-white focus:border-purple-500 focus:outline-none text-base"></textarea>
+                        </div>
+                    </div>
+
+                    <button @click="startLiveSession" :disabled="!liveSession.class || !liveSession.question || !liveSession.correctAnswer || isLocalFile" :class="isLocalFile ? 'opacity-50 cursor-not-allowed' : 'hover:-translate-y-1 hover:shadow-xl'" class="w-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-black text-xl py-5 px-4 rounded-xl shadow-lg transition transform">
+                        <i class="fas fa-play-circle mr-2"></i> BẮT ĐẦU PHIÊN NỘP BÀI (MỞ QR CẢ LỚP)
+                    </button>
+                </div>
+
+                <!-- ĐANG MỞ PHÒNG: MÀN HÌNH THEO DÕI LIVE DASHBOARD -->
+                <div v-else class="animate-fade-in">
+                    <!-- Thanh trạng thái phòng -->
+                    <div class="flex flex-col md:flex-row justify-between items-center bg-indigo-900 text-white p-5 rounded-2xl mb-6 shadow-lg gap-4">
+                        <div>
+                            <span class="bg-emerald-500 text-white text-xs font-black uppercase px-3 py-1 rounded-full animate-pulse mr-2">● ĐANG NHẬN BÀI</span>
+                            <span class="text-2xl font-black">LỚP {{ liveSession.class }}</span>
+                        </div>
+                        <div class="flex items-center space-x-4">
+                            <div class="text-right">
+                                <span class="text-xs text-indigo-300 block">Đã nộp bài:</span>
+                                <span class="text-2xl font-black text-yellow-300">{{ liveSession.submissions.length }} / {{ students[liveSession.class].length }} HS</span>
+                            </div>
+                            <button @click="stopLiveSession" class="bg-rose-600 hover:bg-rose-700 text-white font-bold py-3 px-6 rounded-xl transition shadow flex items-center">
+                                <i class="fas fa-stop-circle mr-2 text-xl"></i> ĐÓNG PHÒNG NỘP BÀI
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Khu vực chiếu: QR Code bên trái, Câu hỏi bên phải -->
+                    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8">
+                        <div class="lg:col-span-4 bg-white border-4 border-indigo-200 rounded-2xl p-6 flex flex-col items-center justify-center text-center shadow-sm">
+                            <h3 class="text-base font-bold text-indigo-900 mb-3"><i class="fas fa-camera mr-1"></i> Quét mã nộp bài bằng ĐT:</h3>
+                            <div id="live-qrcode-container" class="p-2 bg-white rounded-xl shadow-inner border"></div>
+                            <p class="text-xs text-gray-500 mt-3 font-semibold">Tất cả HS cùng quét 1 mã này</p>
+                        </div>
+
+                        <div class="lg:col-span-8 bg-indigo-50 border-2 border-indigo-200 rounded-2xl p-6 flex flex-col justify-between shadow-sm">
+                            <div>
+                                <span class="text-xs font-black text-indigo-700 uppercase tracking-wider block mb-2"><i class="fas fa-question-circle mr-1"></i> Câu hỏi:</span>
+                                <p class="text-2xl md:text-3xl font-extrabold text-gray-800 whitespace-pre-line leading-relaxed mb-4">{{ liveSession.question }}</p>
+                            </div>
+                            <div class="pt-4 border-t border-indigo-200 flex justify-between items-center text-sm font-bold text-indigo-800">
+                                <span>Đáp án chuẩn: <span class="text-emerald-700 bg-emerald-100 px-3 py-1 rounded-lg">{{ liveSession.correctAnswer }}</span></span>
+                                <span>Tự động chấm: <span class="text-emerald-600">BẬT</span></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- BẢNG DANH SÁCH HỌC SINH NỘP THEO THỜI GIAN THỰC -->
+                    <div class="border rounded-xl overflow-hidden shadow-sm">
+                        <div class="bg-slate-800 text-white px-5 py-3 font-bold flex justify-between items-center">
+                            <span><i class="fas fa-list-check mr-2"></i> Danh sách học sinh đã nộp bài (Thời gian thực)</span>
+                            <span class="text-sm font-normal text-gray-300">Đúng: <strong class="text-emerald-400">{{ liveCorrectCount }}</strong> | Sai: <strong class="text-rose-400">{{ liveWrongCount }}</strong></span>
+                        </div>
+                        <table class="min-w-full bg-white">
+                            <thead class="bg-slate-100 text-gray-700 text-sm">
+                                <tr>
+                                    <th class="py-3 px-3 text-center w-12">STT</th>
+                                    <th class="py-3 px-4 text-left">Học sinh</th>
+                                    <th class="py-3 px-4 text-left">Câu trả lời của HS</th>
+                                    <th class="py-3 px-3 text-center">Kết quả</th>
+                                    <th class="py-3 px-3 text-center">Điểm số</th>
+                                    <th class="py-3 px-3 text-center">Thời gian</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200 text-sm">
+                                <tr v-for="(sub, idx) in liveSession.submissions" :key="idx" class="hover:bg-indigo-50 transition animate-fade-in">
+                                    <td class="py-3 px-3 text-center font-bold text-gray-500">{{ idx + 1 }}</td>
+                                    <td class="py-3 px-4 font-bold text-gray-800">{{ sub.student }}</td>
+                                    <td class="py-3 px-4 font-mono font-bold text-indigo-900">{{ sub.answer }}</td>
+                                    <td class="py-3 px-3 text-center">
+                                        <span v-if="sub.isCorrect" class="bg-emerald-100 text-emerald-800 font-bold px-3 py-1 rounded-full text-xs inline-flex items-center">
+                                            <i class="fas fa-check mr-1"></i> ĐÚNG
+                                        </span>
+                                        <span v-else class="bg-rose-100 text-rose-800 font-bold px-3 py-1 rounded-full text-xs inline-flex items-center">
+                                            <i class="fas fa-times mr-1"></i> SAI
+                                        </span>
+                                    </td>
+                                    <td class="py-3 px-3 text-center font-black">
+                                        <span v-if="sub.isCorrect" class="text-emerald-600">+1 Điểm Cộng</span>
+                                        <span v-else class="text-rose-600">-1 Điểm Trừ</span>
+                                    </td>
+                                    <td class="py-3 px-3 text-center text-gray-400 text-xs">{{ sub.time }}</td>
+                                </tr>
+                                <tr v-if="liveSession.submissions.length === 0">
+                                    <td colspan="6" class="py-10 text-center text-gray-400 italic">
+                                        <i class="fas fa-spinner fa-spin mr-2"></i> Đang chờ học sinh quét mã QR và nộp bài...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 3: TỔNG KẾT TUẦN -->
+            <div v-show="activeTab === 'summary'" class="bg-white rounded-xl shadow-sm p-6 animate-fade-in">
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center border-b pb-4 mb-6 gap-3">
+                    <h2 class="text-2xl font-bold text-gray-800"><i class="fas fa-chart-line text-blue-600 mr-2"></i>Tổng Kết & Xuất Báo Cáo</h2>
+                    <div class="flex flex-wrap gap-2">
+                        <button @click="copyClassReport" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg shadow flex items-center transition"><i class="fas fa-share-square mr-2"></i> Copy Gửi Nhóm Lớp (Zalo)</button>
+                        <button @click="exportExcel" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow flex items-center transition"><i class="fas fa-file-excel mr-2"></i> Tải Báo Cáo (Excel)</button>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4 bg-gray-50 p-4 rounded-lg border">
+                    <div><label class="block font-bold mb-1 text-gray-700">Lọc theo Lớp</label><select v-model="filter.class" class="w-full border border-gray-300 rounded-lg p-2 focus:outline-none focus:border-blue-500"><option value="">-- Tất cả --</option><option v-for="cls in classList" :value="cls">{{ cls }}</option></select></div>
+                    <div><label class="block font-bold mb-1 text-gray-700">Lọc theo Học Sinh</label><input type="text" v-model="filter.student" placeholder="Nhập tên..." class="w-full border border-gray-300 rounded-lg p-2 focus:outline-none focus:border-blue-500"></div>
+                    <div><label class="block font-bold mb-1 text-gray-700">Lọc theo Học Kỳ</label><select v-model="filter.semester" class="w-full border border-gray-300 rounded-lg p-2 focus:outline-none focus:border-blue-500"><option value="">-- Tất cả --</option><option value="Học kỳ 1">Học kỳ 1</option><option value="Học kỳ 2">Học kỳ 2</option></select></div>
+                    <div><label class="block font-bold mb-1 text-gray-700">Lọc theo Tuần</label><select v-model="filter.week" class="w-full border border-gray-300 rounded-lg p-2 focus:outline-none focus:border-blue-500"><option value="">-- Tất cả --</option><option v-for="w in 35" :key="w" :value="'Tuần ' + w">Tuần {{ w }}</option></select></div>
+                    <div><label class="block font-bold mb-1 text-gray-700">Lọc theo Ngày</label><input type="date" v-model="filter.date" class="w-full border border-gray-300 rounded-lg p-2 focus:outline-none focus:border-blue-500 cursor-pointer"></div>
+                </div>
+
+                <div v-if="filteredSummaries.length > 0" class="mb-5 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl shadow-sm p-5 flex flex-col md:flex-row justify-between items-center animate-fade-in">
+                    <div class="font-bold text-blue-900 text-xl mb-4 md:mb-0 flex items-center"><i class="fas fa-chart-pie text-blue-600 mr-3 text-3xl"></i><span>TỔNG QUAN <span v-if="filter.class" class="text-indigo-700">LỚP {{ filter.class }}</span><span v-else>TẤT CẢ</span></span></div>
+                    <div class="flex flex-wrap gap-4 justify-center">
+                        <div class="bg-emerald-100 text-emerald-800 px-5 py-3 rounded-lg font-bold border border-emerald-300 shadow-sm flex items-center text-lg"><i class="fas fa-plus-circle mr-2 text-emerald-600"></i> Tổng Cộng: {{ classTotals.plus }}</div>
+                        <div class="bg-rose-100 text-rose-800 px-5 py-3 rounded-lg font-bold border border-rose-300 shadow-sm flex items-center text-lg"><i class="fas fa-minus-circle mr-2 text-rose-600"></i> Tổng Trừ: {{ classTotals.minus }}</div>
+                        <div class="bg-indigo-100 text-indigo-800 px-5 py-3 rounded-lg font-black border border-indigo-300 shadow-sm flex items-center text-lg"><i class="fas fa-star mr-2 text-indigo-600"></i> Tổng Hợp: {{ classTotals.net > 0 ? '+' : '' }}{{ classTotals.net }}</div>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto shadow-sm border rounded-lg">
+                    <table class="min-w-full bg-white">
+                        <thead class="bg-slate-800 text-white">
+                            <tr>
+                                <th class="py-3 px-2 text-center font-semibold w-12 text-gray-300">STT</th>
+                                <th class="py-3 px-4 text-left font-semibold">Học sinh</th>
+                                <th class="py-3 px-2 text-center font-semibold">Lớp</th>
+                                <th class="py-3 px-2 text-center font-semibold text-emerald-400">Cộng (+)</th>
+                                <th class="py-3 px-2 text-center font-semibold text-rose-400">Trừ (-)</th>
+                                <th class="py-3 px-2 text-center font-semibold text-blue-300">Tổng Hợp</th>
+                                <th class="py-3 px-4 text-left font-semibold w-1/3">Chi tiết quá trình</th>
+                                <th class="py-3 px-4 text-center font-semibold text-yellow-300">Gửi KQ</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                            <tr v-for="(summary, index) in filteredSummaries" :key="summary.student" class="hover:bg-blue-50 transition group">
+                                <td class="py-3 px-2 text-center font-bold text-gray-500">{{ index + 1 }}</td>
+                                <td class="py-3 px-4 font-bold text-gray-800">{{ summary.student }}</td>
+                                <td class="py-3 px-2 text-center font-semibold">{{ summary.className }}</td>
+                                <td class="py-3 px-2 text-center"><span v-if="summary.totalPlus > 0" class="bg-emerald-100 text-emerald-800 font-bold px-3 py-1 rounded-full border border-emerald-300">{{ summary.totalPlus }} <i class="fas fa-check"></i></span><span v-else class="text-gray-300">-</span></td>
+                                <td class="py-3 px-2 text-center"><span v-if="summary.totalMinus > 0" class="bg-rose-100 text-rose-800 font-bold px-3 py-1 rounded-full border border-rose-300">{{ summary.totalMinus }} <i class="fas fa-times"></i></span><span v-else class="text-gray-300">-</span></td>
+                                <td class="py-3 px-2 text-center"><span :class="{'text-emerald-600': summary.netScore > 0, 'text-rose-600': summary.netScore < 0, 'text-gray-500': summary.netScore === 0}" class="font-black text-lg">{{ summary.netScore > 0 ? '+' : ''}}{{ summary.netScore }}</span></td>
+                                <td class="py-3 px-4">
+                                    <div class="space-y-2 text-xs">
+                                        <div v-for="record in summary.records" class="bg-gray-50 p-2 rounded border">
+                                            <div class="font-bold text-gray-700 flex justify-between">
+                                                <span><span class="text-blue-700">[{{ record.semester || 'HK1' }}]</span> {{ record.week }} - {{ formatDate(record.date) }}</span>
+                                                <span>
+                                                    <span v-if="record.plusTicks > 0" class="text-emerald-600 mr-1">(+{{ record.plusTicks }})</span>
+                                                    <span v-if="record.minusTicks > 0" class="text-rose-600">(-{{ record.minusTicks }})</span>
+                                                </span>
+                                            </div>
+                                            <div v-if="record.comment" class="italic text-gray-600 mt-1 border-l-2 border-blue-300 pl-2">"{{ record.comment }}"</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="py-3 px-4 text-center"><button @click="copyStudentReport(summary)" class="bg-blue-100 text-blue-700 hover:bg-blue-600 hover:text-white font-bold py-2 px-3 rounded-lg transition text-sm flex flex-col items-center mx-auto border border-blue-300 hover:border-blue-600"><i class="fas fa-paper-plane mb-1 text-lg"></i><span>Zalo</span></button></td>
+                            </tr>
+                            <tr v-if="filteredSummaries.length === 0"><td colspan="8" class="py-8 text-center text-gray-500 font-medium">Chưa có dữ liệu.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB 4: QUẢN LÝ HỌC SINH -->
+            <div v-show="activeTab === 'students'" class="bg-white rounded-xl shadow-sm p-6 animate-fade-in">
+                <div class="flex justify-between items-center mb-6 border-b pb-4">
+                    <h2 class="text-2xl font-bold text-gray-800"><i class="fas fa-users-cog text-blue-600 mr-2"></i>Thiết Lập Danh Sách Lớp</h2>
+                    <button @click="isSidebarOpen = true" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow flex items-center transform hover:scale-105 transition"><i class="fas fa-plus-square mr-2"></i> Nhập danh sách lớp</button>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mt-4">
+                    <div class="bg-blue-50 p-5 rounded-lg border border-blue-100">
+                        <h3 class="font-bold mb-4 text-lg text-blue-900 border-b border-blue-200 pb-2">Thêm Học Sinh Thủ Công</h3>
+                        <div class="mb-4"><label class="block font-semibold mb-1">Chọn Lớp</label><select v-model="newStudent.class" class="w-full border border-gray-300 rounded p-2 focus:border-blue-500 focus:outline-none"><option v-for="cls in classList" :value="cls">{{ cls }}</option></select></div>
+                        <div class="mb-4"><label class="block font-semibold mb-1">Tên Học Sinh</label><input type="text" v-model="newStudent.name" @keyup.enter="addStudent" placeholder="Nhập họ và tên..." class="w-full border border-gray-300 rounded p-2 focus:border-blue-500 focus:outline-none"></div>
+                        <button @click="addStudent" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition">Thêm Vào Danh Sách</button>
+                    </div>
+
+                    <div>
+                        <h3 class="font-bold mb-3 text-lg flex justify-between items-end"><span>Danh sách Lớp: <span class="text-blue-700">{{ newStudent.class }}</span></span><span class="text-sm bg-gray-200 text-gray-700 px-2 py-1 rounded-full">Sĩ số: {{ students[newStudent.class].length }}</span></h3>
+                        <div class="border rounded-lg h-80 overflow-y-auto bg-gray-50 p-2 shadow-inner">
+                            <div v-for="(name, index) in students[newStudent.class]" :key="index" class="flex justify-between items-center bg-white p-2 mb-2 rounded shadow-sm border border-gray-200">
+                                <span class="font-medium text-gray-700">{{ index + 1 }}. {{ name }}</span>
+                                <button @click="removeStudent(newStudent.class, index)" class="text-rose-500 hover:text-rose-700 hover:bg-rose-50 p-1 rounded transition"><i class="fas fa-trash"></i></button>
+                            </div>
+                        </div>
+                        <button v-if="students[newStudent.class].length > 0" @click="clearClass(newStudent.class)" class="w-full mt-3 text-rose-600 hover:text-white hover:bg-rose-600 py-2 border border-rose-600 rounded-lg font-bold text-sm transition"><i class="fas fa-exclamation-triangle mr-1"></i> Xóa toàn bộ danh sách lớp này</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SIDEBAR NHẬP DANH SÁCH -->
+            <div v-if="isSidebarOpen" @click="isSidebarOpen = false" class="fixed inset-0 bg-black bg-opacity-50 z-40 transition-opacity"></div>
+            <div :class="isSidebarOpen ? 'translate-x-0' : 'translate-x-full'" class="fixed top-0 right-0 h-full w-96 bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out flex flex-col">
+                <div class="flex justify-between items-center p-5 bg-green-600 text-white shadow-md"><h3 class="text-xl font-bold"><i class="fas fa-users mr-2"></i> Nhập Danh Sách</h3><button @click="isSidebarOpen = false" class="text-white hover:text-gray-200 text-2xl"><i class="fas fa-times"></i></button></div>
+                <div class="p-5 flex-1 overflow-y-auto bg-gray-50">
+                    <div class="mb-5 bg-white p-4 rounded-lg shadow-sm border"><label class="block font-bold mb-2">1. Chọn lớp</label><select v-model="uploadConfig.class" class="w-full border rounded p-2 focus:outline-green-500 mb-3 bg-gray-50"><option v-for="cls in classList" :value="cls">{{ cls }}</option></select><label class="block font-bold mb-2">2. Chế độ nhập</label><label class="flex items-center cursor-pointer mb-2 text-sm"><input type="radio" v-model="uploadConfig.mode" value="replace" class="mr-2 text-green-600"> Xóa sách cũ, ghi mới</label><label class="flex items-center cursor-pointer text-sm"><input type="radio" v-model="uploadConfig.mode" value="append" class="mr-2 text-green-600"> Giữ cũ, nối tiếp vào</label></div>
+                    <div class="flex border-b-2 mb-4 bg-white rounded-t"><button @click="importMethod = 'text'" :class="importMethod === 'text' ? 'border-green-600 text-green-700 font-bold border-b-2 bg-green-50' : 'text-gray-500 hover:bg-gray-100'" class="flex-1 py-2 text-sm transition"><i class="fas fa-copy mr-1"></i> Dán văn bản</button><button @click="importMethod = 'excel'" :class="importMethod === 'excel' ? 'border-green-600 text-green-700 font-bold border-b-2 bg-green-50' : 'text-gray-500 hover:bg-gray-100'" class="flex-1 py-2 text-sm transition"><i class="fas fa-file-excel mr-1"></i> File Excel</button></div>
+                    <div v-if="importMethod === 'text'" class="bg-white p-4 rounded-b-lg shadow-sm border border-t-0"><textarea v-model="bulkText" rows="10" class="w-full border-2 border-green-200 rounded p-2 focus:border-green-500 focus:outline-none mb-3" placeholder="Nguyễn Văn A&#10;Trần Thị B..."></textarea><button @click="handleTextImport" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg">Lưu Danh Sách</button></div>
+                    <div v-if="importMethod === 'excel'" class="bg-white p-4 rounded-b-lg shadow-sm border border-t-0"><div class="border-2 border-dashed border-green-400 rounded-lg p-6 text-center hover:bg-green-50 cursor-pointer"><i class="fas fa-cloud-upload-alt text-4xl text-green-500 mb-3"></i><input type="file" @change="handleFileUpload" accept=".xlsx, .xls" class="block w-full text-sm text-gray-500 file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-100 file:text-green-700 hover:file:bg-green-200 cursor-pointer"/></div></div>
+                </div>
+            </div>
+            
+            <!-- Toast Thông Báo -->
+            <div v-if="toast.show" class="fixed bottom-5 right-5 bg-gray-800 text-white px-6 py-4 rounded-lg shadow-2xl z-50 flex items-center space-x-3 transform transition-all duration-300 ease-out translate-y-0 opacity-100">
+                <i class="fas fa-check-circle text-green-400 text-2xl"></i>
+                <div><h4 class="font-bold text-sm">Thông báo</h4><p class="text-xs text-gray-300">{{ toast.message }}</p></div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const { createApp, ref, computed, watch, onMounted, nextTick } = Vue;
+
+        createApp({
+            setup() {
+                // ==========================================
+                // 1. NHẬN DIỆN THIẾT BỊ HỌC SINH / GIÁO VIÊN
+                // ==========================================
+                const isLocalFile = ref(window.location.protocol === 'file:');
+                const urlParams = new URLSearchParams(window.location.search);
+                const isStudentDevice = ref(urlParams.has('room'));
+
+                // ==========================================
+                // 2. BIẾN DÀNH CHO GIÁO VIÊN
+                // ==========================================
+                const activeTab = ref('entry');
+                const isSidebarOpen = ref(false);
+                const importMethod = ref('text');
+                const bulkText = ref('');
+                const toast = ref({ show: false, message: '' });
+                const classList = ['10A1', '10A5', '10A9', '11A2', '11A3'];
+                const students = ref({ '10A1': [], '10A5': [], '10A9': [], '11A2': [], '11A3': [] });
+                const records = ref([]);
+
+                // Thuật toán đồng bộ thời gian (12/10/2026 = Tuần 6)
+                const getWeekFromDate = (dateString) => {
+                    if(!dateString) return 1;
+                    const [y, m, d] = dateString.split('-').map(Number);
+                    const targetDate = new Date(y, m - 1, d);
+                    const anchorDate = new Date(2026, 9, 12);
+                    const day = targetDate.getDay();
+                    const diffToMonday = targetDate.getDate() - day + (day === 0 ? -6 : 1);
+                    const targetMonday = new Date(targetDate.setDate(diffToMonday));
+                    targetMonday.setHours(0,0,0,0);
+                    const diffTime = targetMonday.getTime() - anchorDate.getTime();
+                    const diffWeeks = Math.round(diffTime / (1000 * 60 * 60 * 24 * 7));
+                    let week = 6 + diffWeeks;
+                    if (week < 1) week = 1; if (week > 35) week = 35; return week;
+                };
+
+                const getDateFromWeek = (weekNum) => {
+                    const anchorDate = new Date(2026, 9, 12);
+                    const diffWeeks = weekNum - 6;
+                    anchorDate.setDate(anchorDate.getDate() + (diffWeeks * 7));
+                    const yyyy = anchorDate.getFullYear();
+                    const mm = String(anchorDate.getMonth() + 1).padStart(2, '0');
+                    const dd = String(anchorDate.getDate()).padStart(2, '0');
+                    return `${yyyy}-${mm}-${dd}`;
+                };
+
+                const today = new Date().toISOString().split('T')[0];
+                const initialWeekNum = getWeekFromDate(today);
+                const initialWeek = `Tuần ${initialWeekNum}`;
+                const initialSemester = initialWeekNum <= 18 ? 'Học kỳ 1' : 'Học kỳ 2';
+
+                const form = ref({ class: '', student: '', date: today, semester: initialSemester, week: initialWeek, criteriaPlus: { phatBieu: false, lamBaiTap: false, nhanXetDung: false, traLoiDung: false }, criteriaMinus: { khongLamBai: false, khongChuY: false }, comment: '' });
+                const newStudent = ref({ class: '10A1', name: '' });
+                const filter = ref({ class: '', student: '', semester: '', week: '', date: '' });
+                const uploadConfig = ref({ class: '10A1', mode: 'replace' });
+
+                // ==========================================
+                // 3. LOGIC PEERJS: PHIÊN NỘP BÀI CẢ LỚP (ĐỒNG THỜI)
+                // ==========================================
+                const liveSession = ref({
+                    isOpen: false,
+                    class: '',
+                    question: '',
+                    correctAnswer: '',
+                    submissions: [] // Danh sách bài nộp trong phiên này
+                });
+
+                const teacherPeerId = ref('');
+                let teacherPeer = null;
+
+                // Khởi tạo PeerJS trên máy tính giáo viên
+                if (!isStudentDevice.value && !isLocalFile.value) {
+                    teacherPeer = new Peer();
+                    teacherPeer.on('open', id => { teacherPeerId.value = id; });
+                    teacherPeer.on('connection', conn => {
+                        conn.on('data', data => {
+                            if (data.type === 'GET_ROOM_INFO') {
+                                // Gửi danh sách học sinh của lớp và câu hỏi cho điện thoại học sinh
+                                conn.send({
+                                    type: 'ROOM_INFO',
+                                    className: liveSession.value.class,
+                                    question: liveSession.value.question,
+                                    studentList: students.value[liveSession.value.class] || []
+                                });
+                            } else if (data.type === 'SUBMIT_ANSWER') {
+                                handleMultipleStudentAnswer(conn, data.student, data.answer);
+                            }
+                        });
+                    });
+                }
+
+                // Mở phòng nộp bài & Hiện QR code
+                const startLiveSession = () => {
+                    liveSession.value.isOpen = true;
+                    liveSession.value.submissions = []; // Xoá danh sách nộp bài cũ
+                    
+                    nextTick(() => {
+                        const container = document.getElementById("live-qrcode-container");
+                        if(container) {
+                            container.innerHTML = "";
+                            // URL phòng: trỏ tới chính trang này kèm theo query ?room=...
+                            const connectUrl = `${window.location.origin}${window.location.pathname}?room=${teacherPeerId.value}`;
+                            new QRCode(container, {
+                                text: connectUrl,
+                                width: 220,
+                                height: 220,
+                                colorDark : "#312e81",
+                                colorLight : "#ffffff",
+                                correctLevel : QRCode.CorrectLevel.H
+                            });
+                        }
+                    });
+                };
+
+                const stopLiveSession = () => {
+                    if(confirm("Cô có chắc muốn ĐÓNG phòng nộp bài này không? Tất cả điểm đã được tự động lưu vào sổ điểm.")) {
+                        liveSession.value.isOpen = false;
+                    }
+                };
+
+                // Xử lý bài nộp từ bất kỳ học sinh nào gửi về
+                const handleMultipleStudentAnswer = (conn, studentName, studentAns) => {
+                    // Kiểm tra học sinh đã nộp bài này trong phiên chưa
+                    const isAlreadySubmitted = liveSession.value.submissions.some(s => s.student.toLowerCase() === studentName.toLowerCase());
+                    if (isAlreadySubmitted) {
+                        conn.send({ type: 'RESULT', status: 'already_submitted' });
+                        return;
+                    }
+
+                    // Chấm điểm tự động
+                    const ansStudentClean = studentAns.trim().toLowerCase();
+                    const ansTeacherClean = liveSession.value.correctAnswer.trim().toLowerCase();
+                    const isCorrect = (ansStudentClean === ansTeacherClean);
+
+                    const now = new Date();
+                    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+
+                    // Ghi vào bảng hiển thị trực tiếp của cô
+                    liveSession.value.submissions.unshift({
+                        student: studentName,
+                        answer: studentAns,
+                        isCorrect: isCorrect,
+                        time: timeStr
+                    });
+
+                    // Phản hồi ngay lập tức cho điện thoại của học sinh
+                    conn.send({
+                        type: 'RESULT',
+                        status: isCorrect ? 'correct' : 'wrong',
+                        correctAnswer: liveSession.value.correctAnswer
+                    });
+
+                    // Tự động ghi vào lịch sử sổ điểm học tập
+                    let p = isCorrect ? 1 : 0;
+                    let m = isCorrect ? 0 : 1;
+                    let commentText = `[Nộp ĐT Trực tuyến] Câu: "${liveSession.value.question}" - Trả lời: "${studentAns}" -> ${isCorrect ? 'ĐÚNG' : 'SAI (ĐA chuẩn: ' + liveSession.value.correctAnswer + ')'}`;
+
+                    records.value.push({
+                        id: Date.now(),
+                        className: liveSession.value.class,
+                        student: studentName,
+                        date: form.value.date,
+                        semester: form.value.semester,
+                        week: form.value.week,
+                        criteriaPlus: { phatBieu: false, lamBaiTap: false, nhanXetDung: false, traLoiDung: isCorrect },
+                        criteriaMinus: { khongLamBai: false, khongChuY: !isCorrect },
+                        plusTicks: p,
+                        minusTicks: m,
+                        comment: commentText
+                    });
+                };
+
+                const liveCorrectCount = computed(() => liveSession.value.submissions.filter(s => s.isCorrect).length);
+                const liveWrongCount = computed(() => liveSession.value.submissions.filter(s => !s.isCorrect).length);
+
+                // ==========================================
+                // 4. LOGIC XỬ LÝ TRÊN ĐIỆN THOẠI HỌC SINH
+                // ==========================================
+                const studentState = ref({
+                    room: urlParams.get('room'),
+                    status: 'connecting', // connecting, ready, submitting, correct, wrong, already_submitted, error
+                    className: '',
+                    question: '',
+                    studentList: [],
+                    selectedStudent: '',
+                    answer: '',
+                    correctAnswer: ''
+                });
+
+                let studentConn = null;
+
+                const connectToTeacherRoom = () => {
+                    studentState.value.status = 'connecting';
+                    const peer = new Peer();
+                    peer.on('open', () => {
+                        studentConn = peer.connect(studentState.value.room);
+                        studentConn.on('open', () => {
+                            // Yêu cầu lấy thông tin phòng
+                            studentConn.send({ type: 'GET_ROOM_INFO' });
+                        });
+
+                        studentConn.on('data', data => {
+                            if (data.type === 'ROOM_INFO') {
+                                studentState.value.className = data.className;
+                                studentState.value.question = data.question;
+                                studentState.value.studentList = data.studentList;
+                                studentState.value.status = 'ready';
+                            } else if (data.type === 'RESULT') {
+                                studentState.value.correctAnswer = data.correctAnswer || '';
+                                studentState.value.status = data.status; // 'correct', 'wrong', 'already_submitted'
+                            }
+                        });
+
+                        studentConn.on('error', () => { studentState.value.status = 'error'; });
+                        studentConn.on('close', () => { studentState.value.status = 'error'; });
+                    });
+
+                    peer.on('error', () => { studentState.value.status = 'error'; });
+                };
+
+                if (isStudentDevice.value) {
+                    connectToTeacherRoom();
+                }
+
+                const sendAnswerFromPhone = () => {
+                    if(!studentState.value.selectedStudent) return alert("Em vui lòng chọn tên của mình!");
+                    if(!studentState.value.answer.trim()) return alert("Em vui lòng nhập câu trả lời!");
+
+                    studentState.value.status = 'submitting';
+                    studentConn.send({
+                        type: 'SUBMIT_ANSWER',
+                        student: studentState.value.selectedStudent,
+                        answer: studentState.value.answer.trim()
+                    });
+                };
+
+                // ==========================================
+                // 5. CÁC TÍNH NĂNG CƠ BẢN KHÁC (GIỮ NGUYÊN)
+                // ==========================================
+                let isUpdatingFromWatch = false;
+                watch(() => form.value.date, (newDate) => {
+                    if (!newDate || isUpdatingFromWatch) return;
+                    isUpdatingFromWatch = true;
+                    const weekNum = getWeekFromDate(newDate);
+                    form.value.week = `Tuần ${weekNum}`;
+                    form.value.semester = weekNum <= 18 ? 'Học kỳ 1' : 'Học kỳ 2';
+                    isUpdatingFromWatch = false;
+                });
+                watch(() => form.value.week, (newWeek) => {
+                    if (!newWeek || isUpdatingFromWatch) return;
+                    isUpdatingFromWatch = true;
+                    const weekNum = parseInt(newWeek.replace('Tuần ', ''));
+                    if (getWeekFromDate(form.value.date) !== weekNum) form.value.date = getDateFromWeek(weekNum);
+                    form.value.semester = weekNum <= 18 ? 'Học kỳ 1' : 'Học kỳ 2';
+                    isUpdatingFromWatch = false;
+                });
+
+                onMounted(() => {
+                    if (!isStudentDevice.value) {
+                        const savedStudents = localStorage.getItem('englishApp_students');
+                        const savedRecords = localStorage.getItem('englishApp_records');
+                        if (savedStudents) students.value = JSON.parse(savedStudents);
+                        if (savedRecords) records.value = JSON.parse(savedRecords);
+                    }
+                });
+
+                watch(students, (newVal) => { if(!isStudentDevice.value) localStorage.setItem('englishApp_students', JSON.stringify(newVal)); }, { deep: true });
+                watch(records, (newVal) => { if(!isStudentDevice.value) localStorage.setItem('englishApp_records', JSON.stringify(newVal)); }, { deep: true });
+
+                const tabClass = (tabName) => activeTab.value === tabName ? 'py-3 px-4 font-bold text-blue-700 bg-white rounded-lg border border-blue-200 shadow-sm shadow-blue-100 ring-2 ring-blue-500' : 'py-3 px-4 font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg border border-gray-200';
+                const showToast = (message) => { toast.value = { show: true, message: message }; setTimeout(() => { toast.value.show = false; }, 4000); }
+                const addStudent = () => { if (newStudent.value.name.trim() === '') return alert('Vui lòng nhập tên!'); students.value[newStudent.value.class].push(newStudent.value.name.trim()); newStudent.value.name = ''; };
+                const removeStudent = (cls, index) => { if(confirm('Bạn có chắc muốn xóa học sinh này?')) students.value[cls].splice(index, 1); };
+                const clearClass = (cls) => { if(confirm(`XÓA TOÀN BỘ học sinh lớp ${cls}?`)) students.value[cls] = []; };
+
+                const handleTextImport = () => {
+                    if (!bulkText.value.trim()) return alert('Vui lòng dán danh sách!');
+                    const names = bulkText.value.split('\n').map(n => n.trim()).filter(n => n.length > 0);
+                    if (uploadConfig.value.mode === 'replace') students.value[uploadConfig.value.class] = names;
+                    else students.value[uploadConfig.value.class].push(...names);
+                    alert(`✅ Đã thêm ${names.length} học sinh!`); bulkText.value = ''; isSidebarOpen.value = false;
+                };
+
+                const handleFileUpload = (event) => {
+                    const file = event.target.files[0]; if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            const data = new Uint8Array(e.target.result);
+                            const workbook = XLSX.read(data, { type: 'array' });
+                            const sheet = workbook.Sheets[workbook.SheetNames[0]]; 
+                            const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                            let extractedNames = []; let nameColIdx = -1; let startRow = 0;
+                            for(let i = 0; i < Math.min(5, rows.length); i++) {
+                                for(let j = 0; j < rows[i].length; j++) {
+                                    if(typeof rows[i][j] === 'string' && (rows[i][j].toLowerCase().includes('họ và tên') || rows[i][j].toLowerCase().includes('họ tên'))) { nameColIdx = j; startRow = i + 1; break; }
+                                }
+                                if(nameColIdx !== -1) break;
+                            }
+                            if(nameColIdx === -1) { nameColIdx = 1; startRow = 1; }
+                            for(let i = startRow; i < rows.length; i++) {
+                                if(rows[i][nameColIdx]) {
+                                    const name = String(rows[i][nameColIdx]).trim();
+                                    if(name.length > 2 && !name.toLowerCase().includes('họ và tên')) extractedNames.push(name);
+                                }
+                            }
+                            if (uploadConfig.value.mode === 'replace') students.value[uploadConfig.value.class] = extractedNames;
+                            else students.value[uploadConfig.value.class].push(...extractedNames);
+                            alert(`✅ Đã tải ${extractedNames.length} học sinh!`); isSidebarOpen.value = false; event.target.value = '';
+                        } catch (err) { alert("❌ Lỗi đọc file."); }
+                    };
+                    reader.readAsArrayBuffer(file);
+                };
+
+                const todayRecordsCount = computed(() => {
+                    if (!form.value.class || !form.value.student || !form.value.date) return 0;
+                    return records.value.filter(r => r.className === form.value.class && r.student === form.value.student && r.date === form.value.date).length;
+                });
+
+                const saveRecord = () => {
+                    if (!form.value.class || !form.value.student || !form.value.date) return alert('Vui lòng điền đủ Lớp, Học sinh, Ngày!');
+                    let plus = Object.values(form.value.criteriaPlus).filter(v => v === true).length;
+                    let minus = Object.values(form.value.criteriaMinus).filter(v => v === true).length;
+                    records.value.push({ id: Date.now(), className: form.value.class, student: form.value.student, date: form.value.date, semester: form.value.semester, week: form.value.week, criteriaPlus: { ...form.value.criteriaPlus }, criteriaMinus: { ...form.value.criteriaMinus }, plusTicks: plus, minusTicks: minus, comment: form.value.comment });
+                    alert(`Đã lưu cho ${form.value.student}! \n(Cộng: ${plus} | Trừ: ${minus})`);
+                    form.value.criteriaPlus = { phatBieu: false, lamBaiTap: false, nhanXetDung: false, traLoiDung: false }; form.value.criteriaMinus = { khongLamBai: false, khongChuY: false }; form.value.comment = '';
+                };
+
+                const filteredSummaries = computed(() => {
+                    let filtered = records.value.filter(r => {
+                        return (filter.value.class ? r.className === filter.value.class : true) && 
+                               (filter.value.student ? r.student.toLowerCase().includes(filter.value.student.toLowerCase()) : true) && 
+                               (filter.value.semester ? (r.semester || 'Học kỳ 1') === filter.value.semester : true) && 
+                               (filter.value.week ? r.week === filter.value.week : true) && 
+                               (filter.value.date ? r.date === filter.value.date : true);
+                    });
+                    const summaryMap = {};
+                    filtered.forEach(record => {
+                        const key = `${record.className}_${record.student}`;
+                        if (!summaryMap[key]) summaryMap[key] = { student: record.student, className: record.className, totalPlus: 0, totalMinus: 0, netScore: 0, records: [], latestUpdate: 0 };
+                        summaryMap[key].totalPlus += (record.plusTicks !== undefined ? record.plusTicks : (record.ticks || 0));
+                        summaryMap[key].totalMinus += (record.minusTicks || 0);
+                        summaryMap[key].netScore = summaryMap[key].totalPlus - summaryMap[key].totalMinus;
+                        summaryMap[key].records.push(record);
+                        if (record.id > summaryMap[key].latestUpdate) summaryMap[key].latestUpdate = record.id;
+                    });
+                    return Object.values(summaryMap).sort((a, b) => b.latestUpdate - a.latestUpdate);
+                });
+
+                const classTotals = computed(() => {
+                    let plus = 0; let minus = 0;
+                    filteredSummaries.value.forEach(s => { plus += s.totalPlus; minus += s.totalMinus; });
+                    return { plus, minus, net: plus - minus };
+                });
+
+                const copyStudentReport = (summary) => {
+                    let text = `📊 KẾT QUẢ HỌC TẬP MÔN TIẾNG ANH\n👨‍🎓 Học sinh: ${summary.student} - Lớp: ${summary.className}\n👩‍🏫 Giáo viên: Nguyễn Thị Huỳnh Nhi\n------------------------\n✅ Cộng (+): ${summary.totalPlus} | ❌ Trừ (-): ${summary.totalMinus}\n🌟 ĐIỂM TỔNG HỢP: ${summary.netScore > 0 ? '+' : ''}${summary.netScore}\n\n📝 Chi tiết:\n`;
+                    summary.records.forEach(r => { text += `- [${r.semester || 'HK1'} | ${r.week}] ${formatDate(r.date)}: Cộng ${r.plusTicks||0}, Trừ ${r.minusTicks||0}${r.comment ? ' (NX: '+r.comment+')' : ''}\n`; });
+                    navigator.clipboard.writeText(text).then(() => showToast(`Đã sao chép báo cáo của em ${summary.student}!`));
+                };
+
+                const copyClassReport = () => {
+                    if (!filter.value.class) return alert("⚠️ Vui lòng CHỌN 1 LỚP ở Bộ Lọc!");
+                    let text = `📊 TỔNG HỢP TIẾNG ANH - LỚP ${filter.value.class}\n👩‍🏫 Giáo viên: Nguyễn Thị Huỳnh Nhi\n------------------------\n`;
+                    filteredSummaries.value.forEach((s, i) => { text += `${i+1}. ${s.student}: ${s.netScore > 0 ? '+' : ''}${s.netScore} (Cộng: ${s.totalPlus} | Trừ: ${s.totalMinus})\n`; });
+                    navigator.clipboard.writeText(text).then(() => showToast(`Đã sao chép Bảng tổng hợp lớp ${filter.value.class}!`));
+                };
+
+                const exportExcel = () => {
+                    if (filteredSummaries.value.length === 0) return alert('Không có dữ liệu!');
+                    const exportData = filteredSummaries.value.map((s, index) => {
+                        return {
+                            'STT': index + 1, 'Học Sinh': s.student, 'Lớp': s.className, 'Cộng (+)': s.totalPlus, 'Trừ (-)': s.totalMinus, 'Tổng Hợp': s.netScore,
+                            'Chi Tiết': s.records.map(r => `[${formatDate(r.date)} | ${r.week}] Cộng: ${r.plusTicks||0}. Trừ: ${r.minusTicks||0}. ${r.comment||''}`).join(' \n ')
+                        };
+                    });
+                    const worksheet = XLSX.utils.json_to_sheet(exportData);
+                    worksheet['!cols'] = [ {wch: 5}, {wch: 25}, {wch: 10}, {wch: 10}, {wch: 10}, {wch: 12}, {wch: 100} ];
+                    const workbook = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(workbook, worksheet, "TongKet");
+                    XLSX.writeFile(workbook, `TongKet_${filter.value.class || 'TatCa'}_${filter.value.date || 'ToanBo'}.xlsx`);
+                };
+
+                const formatDate = (dateString) => {
+                    if(!dateString) return '';
+                    const [year, month, day] = dateString.split('-'); return `${day}/${month}/${year}`;
+                };
+
+                return {
+                    activeTab, classList, students, form, newStudent, filter, tabClass, addStudent, removeStudent, clearClass, saveRecord, filteredSummaries, formatDate, isSidebarOpen, importMethod, bulkText, handleTextImport, uploadConfig, handleFileUpload, exportExcel, copyStudentReport, copyClassReport, toast, todayRecordsCount, classTotals,
+                    // Live Session
+                    liveSession, startLiveSession, stopLiveSession, liveCorrectCount, liveWrongCount,
+                    // Student device
+                    isStudentDevice, studentState, sendAnswerFromPhone, connectToTeacherRoom, isLocalFile
+                };
+            }
+        }).mount('#app');
+    </script>
+    <style>
+        .animate-fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</body>
+</html>
